@@ -1,4 +1,4 @@
-package Simulator.Record;
+package Eunomia.Record;
 
 import java.util.ArrayList;
 import java.util.List;

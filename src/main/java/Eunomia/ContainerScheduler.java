@@ -1,13 +1,13 @@
-package Simulator;
+package Eunomia;
 
-import Simulator.Record.PerMinInvokeRecord;
-import Simulator.Record.PerMinMemRecord;
-import Simulator.Utils.CSVUtil;
-import Simulator.Enums.Policy;
-import Simulator.Enums.schedulePolicy;
-import Simulator.Enums.InvokeStatus;
-import Simulator.Record.ContainerRecord;
-import Simulator.Record.InvokeResultRecord;
+import Eunomia.Record.PerMinInvokeRecord;
+import Eunomia.Record.PerMinMemRecord;
+import Eunomia.Utils.CSVUtil;
+import Eunomia.Enums.Policy;
+import Eunomia.Enums.schedulePolicy;
+import Eunomia.Enums.InvokeStatus;
+import Eunomia.Record.ContainerRecord;
+import Eunomia.Record.InvokeResultRecord;
 
 import java.io.*;
 import java.util.*;
@@ -31,7 +31,7 @@ public class ContainerScheduler {
     /**
      * 可用于独立空间分配的空间最大大小
      */
-    private int maxSepMemBlockCapacity;
+    private int maxSepMemPoolCapacity;
 
     // data paths
     /**
@@ -89,7 +89,7 @@ public class ContainerScheduler {
                               String invokeRecordsPath, String invokeResPath,
                               String containerResPath, String perMinuteRecordPath,
                               String memUsedPerMinRecordPath,
-                              int maxSepMemBlockCapacity) {
+                              int maxSepMemPoolCapacity) {
         this.memCapacity = memCapacity;
         this.policy = policy;
 
@@ -99,7 +99,7 @@ public class ContainerScheduler {
         this.perMinuteRecordPath = perMinuteRecordPath;
         this.memUsedPerMinRecordPath = memUsedPerMinRecordPath;
 
-        this.maxSepMemBlockCapacity = maxSepMemBlockCapacity;
+        this.maxSepMemPoolCapacity = maxSepMemPoolCapacity;
     }
 
 
@@ -109,16 +109,16 @@ public class ContainerScheduler {
      * 执行模拟循环,按照生成的调用记录进行模拟调用。并且记录各个函数的调用结果(warm/cold/drop)
      * 同时每个时间循环内对container状态进行更新处理
      * 循环结束后记录每个function的调用结果
-     * @param minutesToSimulate 模拟的时间
+     * @param minutesToRun 模拟的时间
      * @param simpleAllocate 是否进行简单分配，若是，则SSMP分配时只分配一块/两块
      */
-    public void doMainLoop(int minutesToSimulate, boolean simpleAllocate) {
+    public void doMainLoop(int minutesToRun, boolean simpleAllocate) {
         final int minutesADay = 1440;
         final int secondsAMinus = 60;
         final int millisASec = 1000;
         int currentTime = 0;
-        int queueWaitTime = MemoryBlock.messageTTL;
-        int endTime = (minutesToSimulate) * secondsAMinus * millisASec + MemoryBlock.messageTTL;
+        int queueWaitTime = ConcurrencyPool.messageTTL;
+        int endTime = (minutesToRun) * secondsAMinus * millisASec + ConcurrencyPool.messageTTL;
         int keepAliveTime = 10 * secondsAMinus * millisASec; //10min
 
         //初始化操作
@@ -154,11 +154,11 @@ public class ContainerScheduler {
 
 
                 //2.每时刻首先进行container处理
-                containerPoolUpdate(allocator.getMainMemBlock(), currentTime ,keepAliveTime);
+                containerPoolUpdate(allocator.getMainMemPool(), currentTime ,keepAliveTime);
                 if(policy == Policy.DSMP || policy == Policy.SSMP){
-                    for (String funcName: allocator.getSeperatedMemBlocksMap().keySet()) {
-                        MemoryBlock memoryBlock = allocator.getSeperatedMemBlocksMap().get(funcName);
-                        containerPoolUpdate(memoryBlock,currentTime,keepAliveTime);
+                    for (String funcName: allocator.getSeperatedMemPoolsMap().keySet()) {
+                        ConcurrencyPool memoryPool = allocator.getSeperatedMemPoolsMap().get(funcName);
+                        containerPoolUpdate(memoryPool,currentTime,keepAliveTime);
                     }
                 }
 
@@ -185,10 +185,10 @@ public class ContainerScheduler {
 
                         if(invokeTime <= currentTime){
                             if((this.policy == Policy.DSMP || this.policy == Policy.SSMP) && highCostFunctionNameList.contains(funcHash)){
-                                MemoryBlock block = allocator.getSeperatedMemBlocksMap().get(funcHash);
-                                block.offerMessage(invoke);
+                                ConcurrencyPool pool = allocator.getSeperatedMemPoolsMap().get(funcHash);
+                                pool.offerMessage(invoke);
                             } else {
-                                allocator.getMainMemBlock().offerMessage(invoke);
+                                allocator.getMainMemPool().offerMessage(invoke);
                             }
                         } else {
                             //invokeTime大于当前时间，不在本时刻入队
@@ -202,13 +202,13 @@ public class ContainerScheduler {
 
                 //4.接下来从消息队列中取出调用消息，进行处理
                 if(this.policy == Policy.DSMP || this.policy == Policy.SSMP){
-                    //处理seperated blocks
-                    for (MemoryBlock block: allocator.getSeperatedMemBlocksMap().values()) {
-                        pollMessageAndInvoke(block, currentTime);
+                    //处理seperated pools
+                    for (ConcurrencyPool pool: allocator.getSeperatedMemPoolsMap().values()) {
+                        pollMessageAndInvoke(pool, currentTime);
                     }
                 }
-                //处理main block
-                pollMessageAndInvoke(allocator.getMainMemBlock(),currentTime);
+                //处理main pool
+                pollMessageAndInvoke(allocator.getMainMemPool(),currentTime);
 
                 //5.记录每分钟内存的整体占用情况以及高频函数的内存占用情况
                 for (String name :highCostMemPerMinRecordMap.keySet()) {
@@ -216,11 +216,11 @@ public class ContainerScheduler {
                     if(Objects.equals(name, ALL_NAME)){
                         int memUsed = 0;
                         if(this.policy == Policy.DSMP || this.policy == Policy.SSMP){
-                            for (MemoryBlock block: allocator.getSeperatedMemBlocksMap().values()) {
-                                memUsed += block.getMemUsed();
+                            for (ConcurrencyPool pool: allocator.getSeperatedMemPoolsMap().values()) {
+                                memUsed += pool.getMemUsed();
                             }
                         }
-                        memUsed += allocator.getMainMemBlock().getMemUsed();
+                        memUsed += allocator.getMainMemPool().getMemUsed();
                         PerMinMemRecord record = highCostMemPerMinRecordMap.get(ALL_NAME);
                         record.setMemAtMilliSec(currentTime,memUsed);
                     } else {
@@ -255,53 +255,53 @@ public class ContainerScheduler {
     }
 
     /**
-     * 从block的消息队列中取出消息并进行处理,进行以下步骤：
+     * 从pool的消息队列中取出消息并进行处理,进行以下步骤：
      * 1.移除超出队列长度的消息
      * 2.删除过期消息
      * 3.处理消息直到遇到不成功的调用，不成功的调用留到下一次时间戳
-     * @param block 内存块
+     * @param pool 内存块
      * @param time 调用时间
      */
-    private void pollMessageAndInvoke(MemoryBlock block, int time){
+    private void pollMessageAndInvoke(ConcurrencyPool pool, int time){
 
         //1.先移除超出队列长度的消息
-        while (block.getMessageQueueLength() > MemoryBlock.maxQueueLength){
-            FunctionInvoke fi = block.pollMessage();
+        while (pool.getMessageQueueLength() > ConcurrencyPool.maxQueueLength){
+            FunctionInvoke fi = pool.pollMessage();
             if(fi != null){
                 recordInvoke(fi.getFunctionName(),InvokeStatus.QueueFullDop,time);
             } else {
                 return;
             }
-            if(block.peekMessage() == null){
+            if(pool.peekMessage() == null){
                 return;
             }
         }
 
-        if(block.getMessageQueueLength() == 0){
+        if(pool.getMessageQueueLength() == 0){
             return;
         }
 
         //2.删除过期消息
-        while (time - block.peekMessage().getInvokeTime() > MemoryBlock.messageTTL){
-            FunctionInvoke fi = block.pollMessage();
+        while (time - pool.peekMessage().getInvokeTime() > ConcurrencyPool.messageTTL){
+            FunctionInvoke fi = pool.pollMessage();
             if(fi != null){
                 recordInvoke(fi.getFunctionName(),InvokeStatus.TTLDrop,time);
             } else {
                 return;
             }
-            if(block.peekMessage() == null){
+            if(pool.peekMessage() == null){
                 return;
             }
         }
 
-        if(block.getMessageQueueLength() == 0){
+        if(pool.getMessageQueueLength() == 0){
             return;
         }
 
         //3.执行invoke
         while (true){
             //获得队首message但不出队
-            FunctionInvoke invoke = block.peekMessage();
+            FunctionInvoke invoke = pool.peekMessage();
             if(invoke == null){
                 break;
             }
@@ -312,10 +312,10 @@ public class ContainerScheduler {
             }
 
             //尝试执行队首invoke
-            boolean res = executeInvoke(invoke,time,block);
+            boolean res = executeInvoke(invoke,time,pool);
             if(res){
                 //执行成功则删除队首消息，处理下一条消息
-                block.pollMessage();
+                pool.pollMessage();
             } else {
                 //执行失败则等待下一毫秒去执行
                 break;
@@ -329,12 +329,12 @@ public class ContainerScheduler {
      *
      * @param invoke 要执行的调用
      * @param time   调用时间
-     * @param memoryBlock 调用所在的内存块
+     * @param memoryPool 调用所在的内存块
      * @return 是否执行成功
      */
-    private boolean executeInvoke(FunctionInvoke invoke, int time, MemoryBlock memoryBlock){
+    private boolean executeInvoke(FunctionInvoke invoke, int time, ConcurrencyPool memoryPool){
         String functionName = invoke.getFunctionName();
-        List<Container> containerPool = memoryBlock.getContainerPool();
+        List<Container> containerPool = memoryPool.getContainerPool();
         boolean res;
 
         //1.寻找属于此Function的Warm Container
@@ -356,11 +356,11 @@ public class ContainerScheduler {
             int memNeeded = function.getMemSize();
 
             //若剩余内存充足,生成新的container
-            if (memoryBlock.getCapacity() - memoryBlock.getMemUsed() >= memNeeded) {
+            if (memoryPool.getCapacity() - memoryPool.getMemUsed() >= memNeeded) {
                 Container container = new Container(function);
                 containerPool.add(container);
                 container.update_initRun(time);
-                memoryBlock.increaseMemUsed(memNeeded);
+                memoryPool.increaseMemUsed(memNeeded);
                 function.increaseContainerNum();
                 recordInvoke(functionName, InvokeStatus.Cold, time);
                 res = true;
@@ -373,13 +373,13 @@ public class ContainerScheduler {
                     res = false;
 
                 } else { //有可驱逐的container，依照LRU策略驱逐
-                    boolean evictRes = evictContainer(notRunningContainers, memNeeded, memoryBlock);
+                    boolean evictRes = evictContainer(notRunningContainers, memNeeded, memoryPool);
                     if (evictRes) {
                         //驱逐成功,生成新的Container
                         Container container = new Container(function);
                         containerPool.add(container);
                         container.update_initRun(time);
-                        memoryBlock.increaseMemUsed(memNeeded);
+                        memoryPool.increaseMemUsed(memNeeded);
                         function.increaseContainerNum();
                         recordInvoke(functionName, InvokeStatus.Cold, time);
                         res = true;
@@ -400,10 +400,10 @@ public class ContainerScheduler {
      *
      * @param notRunningContainers 未在running状态的container，即可以被驱逐的container
      * @param memToSpare           需要腾出的mem空间，若驱逐一个LRU container 后还未满足，则继续驱逐，知道没有可驱逐的container或mem已满足要求
-     * @param memoryBlock          container所在的内存块
+     * @param memoryPool          container所在的内存块
      * @return 驱逐是否成功
      */
-    private boolean evictContainer(List<Container> notRunningContainers, int memToSpare, MemoryBlock memoryBlock) {
+    private boolean evictContainer(List<Container> notRunningContainers, int memToSpare, ConcurrencyPool memoryPool) {
         notRunningContainers.sort((o1, o2) -> o2.getLastAccess_t() - o1.getLastAccess_t()); //时间从大到小排序
         while (true) {
             if (notRunningContainers.size() == 0) {
@@ -412,20 +412,20 @@ public class ContainerScheduler {
             Container oldestContainer = notRunningContainers.get(notRunningContainers.size() - 1);
 
             int mem = oldestContainer.update_Terminate();
-            memoryBlock.decreaseMemUsed(mem);
+            memoryPool.decreaseMemUsed(mem);
             Function function = oldestContainer.getFunction();
             function.decreaseContainerNum();
 
             notRunningContainers.remove(oldestContainer);
-            memoryBlock.getContainerPool().remove(oldestContainer);
+            memoryPool.getContainerPool().remove(oldestContainer);
 
             this.currentContainerRecord.increaseEvict();
 
-            if (memoryBlock.getCapacity() - memoryBlock.getMemUsed() >= memToSpare) {
+            if (memoryPool.getCapacity() - memoryPool.getMemUsed() >= memToSpare) {
                 return true;
             }
 
-            /*if(memoryBlock.getCapacity() - memoryBlock.getMemUsed() < memToSpare && memoryBlock.memUsed == 0){
+            /*if(memoryPool.getCapacity() - memoryPool.getMemUsed() < memToSpare && memoryPool.memUsed == 0){
                 return false;
             }*/
         }
@@ -487,17 +487,17 @@ public class ContainerScheduler {
 
     /**
      * 在此毫秒更新容器池中的容器，移除到达TTL的container并将run结束的container状态由running设为warm（(keep_alive)
-     * @param memoryBlock 容器池所在的内存块
+     * @param memoryPool 容器池所在的内存块
      * @param currentTime 当前时间戳
      * @param keepAliveTime keep Alive时间
      */
-    private void containerPoolUpdate(MemoryBlock memoryBlock, int currentTime, int keepAliveTime){
-        List<Container> containerPool = memoryBlock.getContainerPool();
+    private void containerPoolUpdate(ConcurrencyPool memoryPool, int currentTime, int keepAliveTime){
+        List<Container> containerPool = memoryPool.getContainerPool();
         //container pool中移除所有keepAlive满10min的函数
         containerPool.removeIf(container ->{
                     if(currentTime - container.getKeepAliveStartTime() >= keepAliveTime){
                         this.currentContainerRecord.increaseAutoDie();
-                        memoryBlock.decreaseMemUsed(container.getFunction().getMemSize());
+                        memoryPool.decreaseMemUsed(container.getFunction().getMemSize());
 
                         Function function = container.getFunction();
                         function.decreaseContainerNum();
@@ -576,12 +576,12 @@ public class ContainerScheduler {
         this.highCostFunctionNameList = highCostFunctionNameList;
     }
 
-    public int getMaxSepMemBlockCapacity() {
-        return maxSepMemBlockCapacity;
+    public int getMaxSepMemPoolCapacity() {
+        return maxSepMemPoolCapacity;
     }
 
-    public void setMaxSepMemBlockCapacity(int maxSepMemBlockCapacity) {
-        this.maxSepMemBlockCapacity = maxSepMemBlockCapacity;
+    public void setMaxSepMemPoolCapacity(int maxSepMemPoolCapacity) {
+        this.maxSepMemPoolCapacity = maxSepMemPoolCapacity;
     }
 
     public Policy getPolicy() {

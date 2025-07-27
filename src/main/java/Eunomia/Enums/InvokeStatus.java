@@ -1,4 +1,4 @@
-package Simulator.Enums;
+package Eunomia.Enums;
 
 import java.util.Queue;
 

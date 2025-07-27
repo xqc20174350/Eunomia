@@ -1,6 +1,6 @@
-package Simulator.Utils;
+package Eunomia.Utils;
 
-import Simulator.Function;
+import Eunomia.Function;
 
 import java.util.List;
 

@@ -1,4 +1,4 @@
-package Simulator.Enums;
+package Eunomia.Enums;
 /**
  * schedulling policy
  * execlude default FCFS

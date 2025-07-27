@@ -1,7 +1,7 @@
-package Simulator;
+package Eunomia;
 
-import Simulator.Enums.Policy;
-import Simulator.MemoryBlock;
+import Eunomia.Enums.Policy;
+import Eunomia.ConcurrencyPool;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,14 +12,14 @@ import java.util.Map;
  * mem allocator
  */
 public class MemAllocator {
-    public static int maxMemoryBlockCount = 500;
-    public static int maxMemoryBlockCountForOneFunc = 100;
+    public static int maxConcurrencyPoolCount = 500;
+    public static int maxConcurrencyPoolCountForOneFunc = 100;
 
     //主内存块
-    private MemoryBlock mainMemBlock;
+    private ConcurrencyPool mainMemPool;
     //独立内存块
-    private Map<String,MemoryBlock> seperatedMemBlocksMap = new HashMap<>();
-    private int maxSepMemBlockCapacity;
+    private Map<String,ConcurrencyPool> seperatedMemPoolsMap = new HashMap<>();
+    private int maxSepMemPoolCapacity;
     private int sepMemLeft;
 
 
@@ -28,13 +28,13 @@ public class MemAllocator {
     private Map<String, List<Integer>> predictionData;
 
     public MemAllocator(ContainerScheduler scheduler){
-        this.mainMemBlock = new MemoryBlock(scheduler.getMemCapacity());
+        this.mainMemPool = new ConcurrencyPool(scheduler.getMemCapacity());
         this.highCostFunctionNameList = scheduler.getHighCostFunctionNameList();
         this.predictionData = scheduler.getPredictionData();
         this.nameToFunctionMap = scheduler.getNameToFunctionMap();
-        this.maxSepMemBlockCapacity = scheduler.getMaxSepMemBlockCapacity();
+        this.maxSepMemPoolCapacity = scheduler.getMaxSepMemPoolCapacity();
 
-        this.sepMemLeft = this.maxSepMemBlockCapacity;
+        this.sepMemLeft = this.maxSepMemPoolCapacity;
     }
 
 
@@ -46,7 +46,7 @@ public class MemAllocator {
      * @param simple 是否进行简单分配
      */
     public void initAllocator(Policy policy, boolean simple){
-        int sepMemLeft = maxSepMemBlockCapacity;
+        int sepMemLeft = maxSepMemPoolCapacity;
         int size = this.highCostFunctionNameList.size();
         for(int i = 0; i < size; i++) {
             String name = highCostFunctionNameList.get(i);
@@ -79,8 +79,8 @@ public class MemAllocator {
                     break;
             }
 
-            int allocateBlockNum = Math.min(minutes, MemAllocator.maxMemoryBlockCountForOneFunc);
-            int memToAllocate = allocateBlockNum * mem;
+            int allocatePoolNum = Math.min(minutes, MemAllocator.maxConcurrencyPoolCountForOneFunc);
+            int memToAllocate = allocatePoolNum * mem;
 
             boolean full = false;
             if(sepMemLeft < memToAllocate){
@@ -88,16 +88,16 @@ public class MemAllocator {
                 full = true;
             }
 
-            MemoryBlock block = new MemoryBlock(memToAllocate, func.getName());
-            int oldCapacity = mainMemBlock.getCapacity();
-            mainMemBlock.setCapacity(oldCapacity - memToAllocate);
+            ConcurrencyPool pool = new ConcurrencyPool(memToAllocate, func.getName());
+            int oldCapacity = mainMemPool.getCapacity();
+            mainMemPool.setCapacity(oldCapacity - memToAllocate);
             sepMemLeft -= memToAllocate;
-            this.seperatedMemBlocksMap.put(func.getName(), block);
+            this.seperatedMemPoolsMap.put(func.getName(), pool);
 
             if(policy != Policy.LRU){
                 System.out.println("mem allocated for " + name + ": " + memToAllocate
                         + "  base num: " + minutes
-                        + "  allocate block num: " + allocateBlockNum);
+                        + "  allocate pool num: " + allocatePoolNum);
             }
 
             if(full){
@@ -127,10 +127,10 @@ public class MemAllocator {
             int totalDuration = invocationCount * duration;
             //一分钟调用的总耗时可以划分为几分钟,可划分为几分钟就给他分配几倍的空间,这样平均下来每分钟都会有完整占用的调用
             int minutes = totalDuration / 60000 + 1;
-            int allocateBlockNum = Math.min(minutes, MemAllocator.maxMemoryBlockCountForOneFunc);
-            int memToAllocate = allocateBlockNum * mem;
-            MemoryBlock block = seperatedMemBlocksMap.get(name);
-            int diff = memToAllocate - block.getCapacity();
+            int allocatePoolNum = Math.min(minutes, MemAllocator.maxConcurrencyPoolCountForOneFunc);
+            int memToAllocate = allocatePoolNum * mem;
+            ConcurrencyPool pool = seperatedMemPoolsMap.get(name);
+            int diff = memToAllocate - pool.getCapacity();
             nameToMemChanges.put(name,diff);
         }
         //Map按照要重新分配的空间大小排序，这样可以优先处理空间要缩小的，能腾出空间
@@ -142,57 +142,57 @@ public class MemAllocator {
         //对所有独立空间进行分配
         for(String name : nameToMemChanges.keySet()) {
             int diff = nameToMemChanges.get(name);
-            MemoryBlock block = this.seperatedMemBlocksMap.get(name);
+            ConcurrencyPool pool = this.seperatedMemPoolsMap.get(name);
 
             //空间要缩小，但此时在使用的mem比更新后的capacity大，不做更新
-            if (diff < 0 && block.getMemUsed() > block.getCapacity() + diff) {
+            if (diff < 0 && pool.getMemUsed() > pool.getCapacity() + diff) {
                 continue;
             } else if (diff > 0 && sepMemLeft < diff) {//空间要增大，但是剩余可分配空间不足,不做更新
                 continue;
             } else {
                 //更新独立块的capacity
-                block.setCapacity(block.getCapacity() + diff);
+                pool.setCapacity(pool.getCapacity() + diff);
 
                 //更新主内存块的capacity
-                int mainMemBlockCapacity = mainMemBlock.getCapacity();
-                mainMemBlock.setCapacity(mainMemBlockCapacity - diff);
+                int mainMemPoolCapacity = mainMemPool.getCapacity();
+                mainMemPool.setCapacity(mainMemPoolCapacity - diff);
 
                 sepMemLeft = sepMemLeft - diff;
             }
         }
     }
 
-    public static int getMaxMemoryBlockCount() {
-        return maxMemoryBlockCount;
+    public static int getMaxConcurrencyPoolCount() {
+        return maxConcurrencyPoolCount;
     }
 
-    public static void setMaxMemoryBlockCount(int maxMemoryBlockCount) {
-        MemAllocator.maxMemoryBlockCount = maxMemoryBlockCount;
+    public static void setMaxConcurrencyPoolCount(int maxConcurrencyPoolCount) {
+        MemAllocator.maxConcurrencyPoolCount = maxConcurrencyPoolCount;
     }
 
-    public static int getMaxMemoryBlockCountForOneFunc() {
-        return maxMemoryBlockCountForOneFunc;
+    public static int getMaxConcurrencyPoolCountForOneFunc() {
+        return maxConcurrencyPoolCountForOneFunc;
     }
 
-    public static void setMaxMemoryBlockCountForOneFunc(int maxMemoryBlockCountForOneFunc) {
-        MemAllocator.maxMemoryBlockCountForOneFunc = maxMemoryBlockCountForOneFunc;
+    public static void setMaxConcurrencyPoolCountForOneFunc(int maxConcurrencyPoolCountForOneFunc) {
+        MemAllocator.maxConcurrencyPoolCountForOneFunc = maxConcurrencyPoolCountForOneFunc;
     }
 
-    public MemoryBlock getMainMemBlock() {
-        return mainMemBlock;
-    }
-
-
-    public Map<String, MemoryBlock> getSeperatedMemBlocksMap() {
-        return seperatedMemBlocksMap;
+    public ConcurrencyPool getMainMemPool() {
+        return mainMemPool;
     }
 
 
-    public int getMaxSepMemBlockCapacity() {
-        return maxSepMemBlockCapacity;
+    public Map<String, ConcurrencyPool> getSeperatedMemPoolsMap() {
+        return seperatedMemPoolsMap;
     }
 
-    public void setMaxSepMemBlockCapacity(int maxSepMemBlockCapacity) {
-        this.maxSepMemBlockCapacity = maxSepMemBlockCapacity;
+
+    public int getMaxSepMemPoolCapacity() {
+        return maxSepMemPoolCapacity;
+    }
+
+    public void setMaxSepMemPoolCapacity(int maxSepMemPoolCapacity) {
+        this.maxSepMemPoolCapacity = maxSepMemPoolCapacity;
     }
 }

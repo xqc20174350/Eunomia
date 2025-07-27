@@ -1,13 +1,13 @@
-package Simulator.Utils;
+package Eunomia.Utils;
 
-import Simulator.ContainerScheduler;
-import Simulator.Enums.Policy;
-import Simulator.Enums.schedulePolicy;
-import Simulator.Function;
-import Simulator.Record.ContainerRecord;
-import Simulator.Record.PerMinInvokeRecord;
-import Simulator.Record.InvokeResultRecord;
-import Simulator.Record.PerMinMemRecord;
+import Eunomia.ContainerScheduler;
+import Eunomia.Enums.Policy;
+import Eunomia.Enums.schedulePolicy;
+import Eunomia.Function;
+import Eunomia.Record.ContainerRecord;
+import Eunomia.Record.PerMinInvokeRecord;
+import Eunomia.Record.InvokeResultRecord;
+import Eunomia.Record.PerMinMemRecord;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
@@ -136,14 +136,14 @@ public class CSVUtil {
     }
 
     /**
-     * 将数据发送给simulator
-     * @param simulator 模拟器
+     * 将数据发送给eunomia
+     * @param eunomia 模拟器
      */
-    public void sendDataToSimulator(ContainerScheduler simulator){
-        simulator.setNameToFunctionMap(this.getNameToFunctionMap());
-        simulator.setHighCostFunctionNameList(this.highCostFunctionNameList);
-        if(simulator.getPolicy() == Policy.DSMP){
-            simulator.setPredictionData(this.readPredictionData(this.predictionPath));
+    public void sendDataToEunomia(ContainerScheduler eunomia){
+        eunomia.setNameToFunctionMap(this.getNameToFunctionMap());
+        eunomia.setHighCostFunctionNameList(this.highCostFunctionNameList);
+        if(eunomia.getPolicy() == Policy.DSMP){
+            eunomia.setPredictionData(this.readPredictionData(this.predictionPath));
         }
     }
 

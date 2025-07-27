@@ -1,4 +1,4 @@
-package Simulator.Record;
+package Eunomia.Record;
 
 /**
  * 调用结果纪录类，记录热启动，冷启动以及drop的次数

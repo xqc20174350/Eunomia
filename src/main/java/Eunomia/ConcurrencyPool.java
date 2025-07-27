@@ -1,4 +1,4 @@
-package Simulator;
+package Eunomia;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -6,11 +6,11 @@ import java.util.List;
 import java.util.Queue;
 
 /**
- * block entity
+ * pool entity
  */
-public class MemoryBlock {
+public class ConcurrencyPool {
     /**
-     * mem block
+     * mem pool
      */
     private int capacity;
     /**
@@ -20,7 +20,7 @@ public class MemoryBlock {
     /**
      * 
      */
-    private String functionNameForThisBlock = null;
+    private String functionNameForThisPool = null;
     /**
      * 内存块中的最大消息队列长度
      */
@@ -31,6 +31,26 @@ public class MemoryBlock {
     public static int messageTTL = 10; //the longest time a message can unit: ms
 
 
+    // 为指定函数创建并发池
+    // public void createConcurrencyPool(String functionId, int initialSize) {
+    //     if (!ConcurrencyPool.containsKey(functionId)) {
+    //         ConcurrencyPool.put(functionId, new FunctionConcurrencyPool(functionId, initialSize));
+    //     }
+    // }
+
+    // 获取指定函数的并发池
+    // public ConcurrencyPool getConcurrencyPool(String functionId) {
+    //     return ConcurrencyPool.get(functionId);
+    // }
+
+    // 动态调整指定函数的并发池大小
+    // public void adjustConcurrencyPoolSize(String functionId, int newSize) {
+    //     ConcurrencyPool pool = getConcurrencyPool(functionId);
+    //     if (pool != null) {
+    //         pool.setSize(newSize);
+    //     }
+    // }
+
     /**
      * container pool
      */
@@ -40,13 +60,13 @@ public class MemoryBlock {
      */
     private Queue<FunctionInvoke> messageQueue = new LinkedList<>();
 
-    public MemoryBlock(int capacity) {
+    public ConcurrencyPool(int capacity) {
         this.capacity = capacity;
     }
 
-    public MemoryBlock(int capacity, String functionNameForThisBlock) {
+    public ConcurrencyPool(int capacity, String functionNameForThisPool) {
         this.capacity = capacity;
-        this.functionNameForThisBlock = functionNameForThisBlock;
+        this.functionNameForThisPool = functionNameForThisPool;
     }
 
     /**
@@ -121,5 +141,6 @@ public class MemoryBlock {
 
     public void setContainerPool(List<Container> containerPool) {
         this.containerPool = containerPool;
+
     }
 }

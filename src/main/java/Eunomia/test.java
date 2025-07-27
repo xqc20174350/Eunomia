@@ -1,14 +1,14 @@
-package Simulator;
+package Eunomia;
 
-import Simulator.Utils.CSVUtil;
-import Simulator.Enums.Policy;
+import Eunomia.Utils.CSVUtil;
+import Eunomia.Enums.Policy;
 
 public class test {
 
 
     public static void main(String[] args) {
         test();
-        //simulateMultipleTimes();
+        //runMultipleTimes();
     }
 
     public static void test(){
@@ -80,14 +80,14 @@ public class test {
 
 
         util.readData(true);
-        util.sendDataToSimulator(scheduler);
+        util.sendDataToEunomia(scheduler);
         boolean simpleAllocate = false;
         scheduler.doMainLoop(1440, simpleAllocate);
 
 
     }
 
-    public static void simulateMultipleTimes(){
+    public static void runMultipleTimes(){
         String representativeFuncPath = "E:\\asplos_data\\representative\\functions.csv";
         String representativeInvokePath = "E:\\asplos_data\\representative\\invokes.csv";
         String representativeIntermediatePath = "E:\\asplos_data\\representative\\intermediate.csv";
@@ -112,7 +112,7 @@ public class test {
                     System.out.println("等待时间:" + waitTime + "ms");
                     System.out.println("采用策略:" + policy);
                     int memCapacity = i * 1024; //内存池空间 单位：Mb
-                    MemoryBlock.messageTTL = waitTime;
+                    ConcurrencyPool.messageTTL = waitTime;
                     String preFixPath = dirPath + waitTime + "ms\\" + policy.toString();
 
                     CSVUtil util = new CSVUtil(representativeFuncPath,predictionPath);
@@ -124,7 +124,7 @@ public class test {
                             preFixPath +perMinResPath + i + "G.csv",
                             preFixPath + memPath + i + "G.csv",
                             (int) (memCapacity * 0.7));
-                    util.sendDataToSimulator(scheduler);
+                    util.sendDataToEunomia(scheduler);
                     boolean simpleAllocate = true;
                     scheduler.doMainLoop(1440, simpleAllocate);
 
