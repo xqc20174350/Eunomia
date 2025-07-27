@@ -36,7 +36,7 @@ The files obtained after sampling, `functions.csv` and `invokes.csv`, serve as t
 
 In the paper, when employing dynamic strategy, the prediction techniques are used to predict \lambda of hotspot functions. The scripts in the `Poisson Optimization` folder can be used for time prediction of the functions. If readers are not attempting the strategy, this step is unnecessary.
 
-Time prediction requires the complete 12 days of data. Pay attention to modifying and setting the paths. Also, correctly set the hash name of the function to be predicted at the beginning of the script.
+The poisson model requires the complete 12 days of data. Pay attention to modifying and setting the paths. Also, correctly set the hash name of the function to be predicted at the beginning of the script.
 
 <br>
 
